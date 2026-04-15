@@ -24,6 +24,7 @@ import { UsersModule } from './users/users.module';
         autoLoadEntities: true, // picks up every forFeature() registration
         synchronize: config.get<boolean>('DB_SYNC', false),
         logging: config.get<boolean>('DB_LOGGING', false),
+        ssl: { rejectUnauthorized: false },
       }),
     }),
     UsersModule,
