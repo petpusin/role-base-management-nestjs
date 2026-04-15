@@ -25,6 +25,11 @@ import { UsersModule } from './users/users.module';
         synchronize: config.get<boolean>('DB_SYNC', false),
         logging: config.get<boolean>('DB_LOGGING', false),
         ssl: { rejectUnauthorized: false },
+        // Fail fast so Cloud Run sees the crash immediately instead of
+        // hanging through retries and hitting the startup timeout.
+        connectTimeoutMS: 10_000,
+        retryAttempts: 3,
+        retryDelay: 2_000,
       }),
     }),
     UsersModule,

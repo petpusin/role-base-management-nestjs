@@ -85,9 +85,11 @@ export default async function handler(
 
 async function bootstrap(): Promise<void> {
   const app = await createApp();
-  await app.listen(process.env.PORT ?? 3000);
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port, '0.0.0.0');
+  console.log(`Application is running on port ${String(port)}`);
 }
-
-if (!process.env.VERCEL) {
-  void bootstrap();
-}
+bootstrap().catch((err: unknown) => {
+  console.error('Fatal error during bootstrap:', err);
+  process.exit(1);
+});

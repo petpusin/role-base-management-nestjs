@@ -1,0 +1,52 @@
+# ── Package manager ───────────────────────────────────────────────────────────
+# Re-installed inside the image via pnpm install --frozen-lockfile
+node_modules
+.pnpm-store
+
+# ── Build output ──────────────────────────────────────────────────────────────
+# Re-compiled inside the image via pnpm build
+dist
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+# Never bake secrets into the image — inject at runtime via Cloud Run env vars
+.env
+.env.*
+!.env.example
+
+# ── Test & quality artefacts ──────────────────────────────────────────────────
+# Not needed at runtime
+coverage
+test
+**/*.spec.ts
+**/*.e2e-spec.ts
+
+# ── TypeScript source ─────────────────────────────────────────────────────────
+# Only compiled JS in dist/ is needed in the final image
+src
+
+# ── Docker files ──────────────────────────────────────────────────────────────
+# Prevents accidental cache-busting on every build
+Dockerfile
+.dockerignore
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Editor & OS noise ─────────────────────────────────────────────────────────
+.vscode
+.idea
+*.log
+.DS_Store
+Thumbs.db
+
+# ── CI / tooling config ───────────────────────────────────────────────────────
+# Not needed inside the container
+.github
+.husky
+eslint.config.*
+prettier.config.*
+.prettierrc*
+.eslintrc*
+jest.config.*
