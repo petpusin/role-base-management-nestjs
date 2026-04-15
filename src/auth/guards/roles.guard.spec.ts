@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import type { Reflector } from '@nestjs/core';
 import type { ExecutionContext } from '@nestjs/common';
 import { RolesGuard } from './roles.guard';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -11,9 +11,14 @@ import type { Role } from '../../roles/role.entity';
 
 const BASE_DATE = new Date('2024-01-01T00:00:00.000Z');
 
-/** Creates a minimal Role stub. Only `name` matters for RolesGuard. */
-const makeRole = (name: string, overrides: Partial<Role> = {}): Role =>
-  ({
+/**
+ * Creates a minimal Role stub.
+ * RolesGuard only reads `.name`, so other fields carry safe defaults.
+ * Uses `const stub: Role` to satisfy the strict `objectLiteralTypeAssertions`
+ * rule (no `{} as Role` escape hatch).
+ */
+const makeRole = (name: string, overrides: Partial<Role> = {}): Role => {
+  const stub: Role = {
     id: `role-${name}`,
     name,
     description: null,
@@ -24,7 +29,9 @@ const makeRole = (name: string, overrides: Partial<Role> = {}): Role =>
     updatedAt: BASE_DATE,
     deletedAt: null,
     ...overrides,
-  }) as Role;
+  };
+  return stub;
+};
 
 /** Creates a minimal RequestUser stub with the given roles. */
 const makeUser = (roles: Role[]): RequestUser => ({
@@ -59,9 +66,10 @@ describe('RolesGuard', () => {
   let reflector: jest.Mocked<Pick<Reflector, 'getAllAndOverride'>>;
 
   beforeEach(() => {
-    reflector = { getAllAndOverride: jest.fn() } as jest.Mocked<
-      Pick<Reflector, 'getAllAndOverride'>
-    >;
+    const mock: { getAllAndOverride: jest.Mock } = {
+      getAllAndOverride: jest.fn(),
+    };
+    reflector = mock as jest.Mocked<Pick<Reflector, 'getAllAndOverride'>>;
     guard = new RolesGuard(reflector as Reflector);
   });
 
@@ -73,7 +81,9 @@ describe('RolesGuard', () => {
 
   describe('reflector integration', () => {
     it('queries metadata with ROLES_KEY and both handler + class targets', () => {
-      reflector.getAllAndOverride.mockReturnValue(undefined as unknown as string[]);
+      reflector.getAllAndOverride.mockReturnValue(
+        undefined as unknown as string[],
+      );
       const ctx = createMockContext();
 
       guard.canActivate(ctx);
@@ -90,7 +100,9 @@ describe('RolesGuard', () => {
 
   describe('when no roles are required', () => {
     it('returns true when the reflector finds no @Roles decorator (undefined)', () => {
-      reflector.getAllAndOverride.mockReturnValue(undefined as unknown as string[]);
+      reflector.getAllAndOverride.mockReturnValue(
+        undefined as unknown as string[],
+      );
 
       // user is undefined: proves the guard short-circuits before touching request.user
       expect(guard.canActivate(createMockContext(undefined))).toBe(true);
@@ -106,7 +118,7 @@ describe('RolesGuard', () => {
       reflector.getAllAndOverride.mockReturnValue([]);
       const ctx = createMockContext(undefined);
 
-      // If user were accessed, user.roles.map would throw — passing proves short-circuit
+      // If request.user were read, user.roles.map would throw — passing proves short-circuit.
       expect(() => guard.canActivate(ctx)).not.toThrow();
     });
   });
@@ -130,7 +142,9 @@ describe('RolesGuard', () => {
 
     it('returns true when the user holds several roles and one matches', () => {
       reflector.getAllAndOverride.mockReturnValue(['admin']);
-      const ctx = createMockContext(makeUser([makeRole('user'), makeRole('admin')]));
+      const ctx = createMockContext(
+        makeUser([makeRole('user'), makeRole('admin')]),
+      );
 
       expect(guard.canActivate(ctx)).toBe(true);
     });
@@ -162,14 +176,14 @@ describe('RolesGuard', () => {
       );
     });
 
-    it('does not match when role names differ only by case (case-sensitive)', () => {
+    it('performs case-sensitive role name comparison', () => {
       reflector.getAllAndOverride.mockReturnValue(['Admin']); // capital A
       const ctx = createMockContext(makeUser([makeRole('admin')])); // lowercase
 
       expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
     });
 
-    it('does not grant access when the user holds a role that is a prefix of the required one', () => {
+    it('does not grant access to a role that is a prefix of the required one', () => {
       reflector.getAllAndOverride.mockReturnValue(['administrator']);
       const ctx = createMockContext(makeUser([makeRole('admin')]));
 
@@ -181,17 +195,18 @@ describe('RolesGuard', () => {
 
   describe('edge cases', () => {
     it('throws TypeError when request.user is missing and roles are required', () => {
-      // This documents the implicit contract: RolesGuard MUST run after JwtAuthGuard.
-      // If JwtAuthGuard is absent from the guard stack, request.user is undefined and
-      // user.roles.map() throws instead of returning a controlled ForbiddenException.
+      // Documents the implicit contract: RolesGuard MUST be stacked after JwtAuthGuard.
+      // Without JwtAuthGuard, request.user is undefined and user.roles.map() throws.
       reflector.getAllAndOverride.mockReturnValue(['admin']);
       const ctx = createMockContext(undefined);
 
       expect(() => guard.canActivate(ctx)).toThrow(TypeError);
     });
 
-    it('returns true immediately without reading request.user when roles list is undefined', () => {
-      reflector.getAllAndOverride.mockReturnValue(undefined as unknown as string[]);
+    it('short-circuits before reading request.user when roles metadata is undefined', () => {
+      reflector.getAllAndOverride.mockReturnValue(
+        undefined as unknown as string[],
+      );
       const ctx = createMockContext(undefined);
 
       // user is undefined; if the guard reads user.roles it would throw

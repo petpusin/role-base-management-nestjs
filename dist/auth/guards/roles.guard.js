@@ -13,13 +13,14 @@ exports.RolesGuard = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const roles_decorator_1 = require("../decorators/roles.decorator");
+const guard_meta_utils_1 = require("./guard-meta.utils");
 let RolesGuard = class RolesGuard {
     reflector;
     constructor(reflector) {
         this.reflector = reflector;
     }
     canActivate(context) {
-        const requiredRoles = this.reflector.getAllAndOverride(roles_decorator_1.ROLES_KEY, [context.getHandler(), context.getClass()]);
+        const requiredRoles = (0, guard_meta_utils_1.getMetadata)(this.reflector, roles_decorator_1.ROLES_KEY, context);
         if (!requiredRoles?.length)
             return true;
         const { user } = context.switchToHttp().getRequest();

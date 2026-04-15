@@ -1,22 +1,20 @@
-import type { ExecutionContext } from '@nestjs/common';
+import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { CanActivate } from '@nestjs/common';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import type { RequestUser } from '../interfaces/request-user.interface';
+import { getMetadata } from './guard-meta.utils';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    // Explicit undefined annotation: NestJS types getAllAndOverride as `T` but
-    // returns undefined at runtime when no decorator is applied.
-    const requiredRoles: string[] | undefined = this.reflector.getAllAndOverride<string[]>(
-      ROLES_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const requiredRoles = getMetadata(this.reflector, ROLES_KEY, context) as
+      | string[]
+      | undefined;
 
+    // No @Roles() decorator or empty list → allow through (no role restriction).
     if (!requiredRoles?.length) return true;
 
     const { user } = context.switchToHttp().getRequest<{ user: RequestUser }>();

@@ -1,9 +1,9 @@
 import { ForbiddenException } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import type { Reflector } from '@nestjs/core';
 import type { ExecutionContext } from '@nestjs/common';
 import { PermissionsGuard } from './permissions.guard';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
-import { PermissionAction } from '../../permissions/permission.entity';
+import type { PermissionAction } from '../../permissions/permission.entity';
 import type { Permission } from '../../permissions/permission.entity';
 import type { Role } from '../../roles/role.entity';
 import type { RequestUser } from '../interfaces/request-user.interface';
@@ -15,13 +15,16 @@ const BASE_DATE = new Date('2024-01-01T00:00:00.000Z');
 
 /**
  * Creates a Permission stub from a slug like "users:read".
- * The guard only inspects `.slug`, so other fields are minimal.
+ * PermissionsGuard only reads `.slug`; other fields carry safe defaults.
+ *
+ * `syncSlug` is provided as a no-op to satisfy the Permission class shape
+ * without using an object-literal type assertion (`{} as Permission`).
  */
 const makePermission = (slug: string): Permission => {
   const colonIdx = slug.indexOf(':');
   const resource = colonIdx !== -1 ? slug.slice(0, colonIdx) : slug;
   const actionStr = colonIdx !== -1 ? slug.slice(colonIdx + 1) : 'read';
-  return {
+  const stub: Permission = {
     id: `perm-${slug}`,
     resource,
     action: actionStr as PermissionAction,
@@ -31,13 +34,16 @@ const makePermission = (slug: string): Permission => {
     createdAt: BASE_DATE,
     updatedAt: BASE_DATE,
     deletedAt: null,
-    syncSlug: jest.fn<void, []>(),
-  } as unknown as Permission;
+    syncSlug(): void {
+      /* test stub — no-op */
+    },
+  };
+  return stub;
 };
 
 /** Creates a Role stub holding the given permissions. */
-const makeRole = (permissions: Permission[]): Role =>
-  ({
+const makeRole = (permissions: Permission[]): Role => {
+  const stub: Role = {
     id: 'role-1',
     name: 'test-role',
     description: null,
@@ -47,7 +53,9 @@ const makeRole = (permissions: Permission[]): Role =>
     createdAt: BASE_DATE,
     updatedAt: BASE_DATE,
     deletedAt: null,
-  }) as Role;
+  };
+  return stub;
+};
 
 /** Creates a RequestUser whose single role holds the given permissions. */
 const makeUser = (permissions: Permission[]): RequestUser => ({
@@ -77,9 +85,10 @@ describe('PermissionsGuard', () => {
   let reflector: jest.Mocked<Pick<Reflector, 'getAllAndOverride'>>;
 
   beforeEach(() => {
-    reflector = { getAllAndOverride: jest.fn() } as jest.Mocked<
-      Pick<Reflector, 'getAllAndOverride'>
-    >;
+    const mock: { getAllAndOverride: jest.Mock } = {
+      getAllAndOverride: jest.fn(),
+    };
+    reflector = mock as jest.Mocked<Pick<Reflector, 'getAllAndOverride'>>;
     guard = new PermissionsGuard(reflector as Reflector);
   });
 
@@ -91,16 +100,18 @@ describe('PermissionsGuard', () => {
 
   describe('reflector integration', () => {
     it('queries metadata with PERMISSIONS_KEY and both handler + class targets', () => {
-      reflector.getAllAndOverride.mockReturnValue(undefined as unknown as string[]);
+      reflector.getAllAndOverride.mockReturnValue(
+        undefined as unknown as string[],
+      );
       const ctx = createMockContext();
 
       guard.canActivate(ctx);
 
       expect(reflector.getAllAndOverride).toHaveBeenCalledTimes(1);
-      expect(reflector.getAllAndOverride).toHaveBeenCalledWith(PERMISSIONS_KEY, [
-        ctx.getHandler(),
-        ctx.getClass(),
-      ]);
+      expect(reflector.getAllAndOverride).toHaveBeenCalledWith(
+        PERMISSIONS_KEY,
+        [ctx.getHandler(), ctx.getClass()],
+      );
     });
   });
 
@@ -108,7 +119,9 @@ describe('PermissionsGuard', () => {
 
   describe('when no permissions are required', () => {
     it('returns true when the reflector finds no @Permissions decorator (undefined)', () => {
-      reflector.getAllAndOverride.mockReturnValue(undefined as unknown as string[]);
+      reflector.getAllAndOverride.mockReturnValue(
+        undefined as unknown as string[],
+      );
 
       expect(guard.canActivate(createMockContext(undefined))).toBe(true);
     });
@@ -138,9 +151,15 @@ describe('PermissionsGuard', () => {
     });
 
     it('returns true when the user holds all required permissions', () => {
-      reflector.getAllAndOverride.mockReturnValue(['users:read', 'users:create']);
+      reflector.getAllAndOverride.mockReturnValue([
+        'users:read',
+        'users:create',
+      ]);
       const ctx = createMockContext(
-        makeUser([makePermission('users:read'), makePermission('users:create')]),
+        makeUser([
+          makePermission('users:read'),
+          makePermission('users:create'),
+        ]),
       );
 
       expect(guard.canActivate(ctx)).toBe(true);
@@ -162,22 +181,22 @@ describe('PermissionsGuard', () => {
 
   // ── Authorized users — manage wildcard ───────────────────────────────────────
 
-  describe('authorized users — manage wildcard', () => {
-    it(`'users:manage' satisfies a 'users:read' requirement`, () => {
+  describe("authorized users — 'manage' wildcard", () => {
+    it("'users:manage' satisfies a 'users:read' requirement", () => {
       reflector.getAllAndOverride.mockReturnValue(['users:read']);
       const ctx = createMockContext(makeUser([makePermission('users:manage')]));
 
       expect(guard.canActivate(ctx)).toBe(true);
     });
 
-    it(`'users:manage' satisfies 'users:delete' (most destructive action)`, () => {
+    it("'users:manage' satisfies 'users:delete' (most destructive action)", () => {
       reflector.getAllAndOverride.mockReturnValue(['users:delete']);
       const ctx = createMockContext(makeUser([makePermission('users:manage')]));
 
       expect(guard.canActivate(ctx)).toBe(true);
     });
 
-    it(`'users:manage' satisfies every users:* action simultaneously`, () => {
+    it("'users:manage' satisfies every users:* action simultaneously", () => {
       reflector.getAllAndOverride.mockReturnValue([
         'users:create',
         'users:read',
@@ -189,14 +208,14 @@ describe('PermissionsGuard', () => {
       expect(guard.canActivate(ctx)).toBe(true);
     });
 
-    it(`'users:manage' does NOT satisfy 'roles:read' (cross-resource boundary)`, () => {
+    it("'users:manage' does NOT satisfy 'roles:read' (cross-resource boundary)", () => {
       reflector.getAllAndOverride.mockReturnValue(['roles:read']);
       const ctx = createMockContext(makeUser([makePermission('users:manage')]));
 
       expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
     });
 
-    it(`'roles:manage' does NOT satisfy 'users:read'`, () => {
+    it("'roles:manage' does NOT satisfy 'users:read'", () => {
       reflector.getAllAndOverride.mockReturnValue(['users:read']);
       const ctx = createMockContext(makeUser([makePermission('roles:manage')]));
 
@@ -204,12 +223,21 @@ describe('PermissionsGuard', () => {
     });
 
     it('satisfies cross-resource requirements when user holds each resource manage', () => {
-      reflector.getAllAndOverride.mockReturnValue(['users:delete', 'roles:update']);
-      const ctx = createMockContext(
-        makeUser([makePermission('users:manage'), makePermission('roles:manage')]),
-      );
+      reflector.getAllAndOverride.mockReturnValue([
+        'users:delete',
+        'roles:update',
+      ]);
+      const roleA = makeRole([makePermission('users:manage')]);
+      const roleB = makeRole([makePermission('roles:manage')]);
+      const user: RequestUser = {
+        id: 'user-uuid',
+        name: 'Multi-role User',
+        email: 'multi@example.com',
+        status: UserStatus.ACTIVE,
+        roles: [roleA, roleB],
+      };
 
-      expect(guard.canActivate(ctx)).toBe(true);
+      expect(guard.canActivate(createMockContext(user))).toBe(true);
     });
   });
 
@@ -224,14 +252,20 @@ describe('PermissionsGuard', () => {
     });
 
     it('throws ForbiddenException when one required permission is missing', () => {
-      reflector.getAllAndOverride.mockReturnValue(['users:read', 'users:create']);
+      reflector.getAllAndOverride.mockReturnValue([
+        'users:read',
+        'users:create',
+      ]);
       const ctx = createMockContext(makeUser([makePermission('users:read')]));
 
       expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
     });
 
     it('lists every missing permission slug in the exception message', () => {
-      reflector.getAllAndOverride.mockReturnValue(['users:create', 'roles:delete']);
+      reflector.getAllAndOverride.mockReturnValue([
+        'users:create',
+        'roles:delete',
+      ]);
       const ctx = createMockContext(makeUser([]));
 
       expect(() => guard.canActivate(ctx)).toThrow(
@@ -240,7 +274,10 @@ describe('PermissionsGuard', () => {
     });
 
     it('lists only the missing permissions when the user holds some but not all', () => {
-      reflector.getAllAndOverride.mockReturnValue(['users:read', 'roles:delete']);
+      reflector.getAllAndOverride.mockReturnValue([
+        'users:read',
+        'roles:delete',
+      ]);
       const ctx = createMockContext(makeUser([makePermission('users:read')]));
 
       expect(() => guard.canActivate(ctx)).toThrow(
@@ -252,13 +289,12 @@ describe('PermissionsGuard', () => {
   // ── Edge cases ────────────────────────────────────────────────────────────────
 
   describe('edge cases', () => {
-    it('denies access for a malformed slug with no colon (instead of a wrong wildcard match)', () => {
-      // Previously: indexOf(':') === -1 → slice(0, -1) trimmed the last char
-      // e.g. required = "usersread" → resource = "usersrea" → checked "usersrea:manage" (wrong!)
+    it('denies access for a malformed slug with no colon (no wrong wildcard match)', () => {
+      // Previously: indexOf(':') === -1 → slice(0, -1) trimmed the last char of the slug,
+      // producing a wrong resource string. e.g. "usersread" → checked "usersrea:manage" (wrong).
       // Fixed: colonIdx === -1 → isSatisfied returns false immediately.
       reflector.getAllAndOverride.mockReturnValue(['usersread']);
       const ctx = createMockContext(
-        // Even with manage on a resource that partially matches the mangled slug, access is denied
         makeUser([makePermission('usersrea:manage')]),
       );
 
@@ -274,6 +310,7 @@ describe('PermissionsGuard', () => {
     });
 
     it('correctly aggregates permissions across multiple roles', () => {
+      reflector.getAllAndOverride.mockReturnValue(['users:read', 'roles:read']);
       const roleA = makeRole([makePermission('users:read')]);
       const roleB = makeRole([makePermission('roles:read')]);
       const user: RequestUser = {
@@ -284,7 +321,6 @@ describe('PermissionsGuard', () => {
         roles: [roleA, roleB],
       };
 
-      reflector.getAllAndOverride.mockReturnValue(['users:read', 'roles:read']);
       expect(guard.canActivate(createMockContext(user))).toBe(true);
     });
   });
