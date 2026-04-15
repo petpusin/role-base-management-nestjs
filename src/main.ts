@@ -60,7 +60,7 @@ async function getOrCreateExpressInstance(): Promise<Express> {
   if (cachedExpressInstance) return cachedExpressInstance;
   const app = await createApp();
   await app.init(); // init() wires DI without starting an HTTP server
-  cachedExpressInstance = app.getHttpAdapter().getInstance() as Express;
+  cachedExpressInstance = app.getHttpAdapter().getInstance();
   return cachedExpressInstance;
 }
 
