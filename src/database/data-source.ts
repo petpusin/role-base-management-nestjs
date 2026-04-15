@@ -25,8 +25,8 @@ const AppDataSource = new DataSource({
   database: process.env.DB_NAME ?? 'rbac_db',
 
   // Point at compiled TS source files so the CLI works without a build step
-  entities: ['src/**/*.entity.ts'],
-  migrations: ['src/database/migrations/*.ts'],
+  entities: ['../**/*.entity.ts'],
+  migrations: ['../database/migrations/*.ts'],
 
   synchronize: false, // never true — migrations own the schema
   logging: ['migration'],
