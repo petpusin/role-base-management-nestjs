@@ -30,6 +30,7 @@ const AppDataSource = new DataSource({
 
   synchronize: false, // never true — migrations own the schema
   logging: ['migration'],
+  ssl: { rejectUnauthorized: false },
 });
 
 export default AppDataSource;
